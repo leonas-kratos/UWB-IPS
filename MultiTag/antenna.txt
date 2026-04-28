@@ -1,0 +1,15 @@
+0x1001:
+#define TX_ANT_DLY 16456
+#define RX_ANT_DLY 16600
+
+0x1002:
+#define TX_ANT_DLY 16456
+#define RX_ANT_DLY 16625
+
+0X1003:
+#define TX_ANT_DLY 16456
+#define RX_ANT_DLY 16645
+
+0x1004:
+#define TX_ANT_DLY 16456
+#define RX_ANT_DLY 16650
