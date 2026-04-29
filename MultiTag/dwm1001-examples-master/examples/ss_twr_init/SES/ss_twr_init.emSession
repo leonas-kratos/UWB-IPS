@@ -63,7 +63,7 @@
  </Watch4>
  <Files>
   <SessionOpenFile windowGroup="DockEditLeft" x="0" y="111" useTextEdit="1" openedFrom="" useBinaryEdit="0" left="0" path="../main.c" selected="0" top="102" codecName="Default"/>
-  <SessionOpenFile windowGroup="DockEditLeft" x="23" y="9" useTextEdit="1" openedFrom="" useBinaryEdit="0" left="0" path="../ss_init_main.c" selected="1" top="0" codecName="Default"/>
+  <SessionOpenFile windowGroup="DockEditLeft" x="34" y="28" useTextEdit="1" openedFrom="" useBinaryEdit="0" left="0" path="../ss_init_main.c" selected="1" top="9" codecName="Default"/>
   <SessionOpenFile windowGroup="DockEditLeft" x="11" y="162" useTextEdit="1" openedFrom="" useBinaryEdit="0" left="0" path="../../../nRF5_SDK_14.2.0/components/drivers_nrf/spi_master/nrf_drv_spi.c" selected="0" top="152" codecName="Default"/>
   <SessionOpenFile windowGroup="DockEditLeft" x="0" y="120" useTextEdit="1" openedFrom="/home/leonas/User/Lab/SystemV2/dwm1001-examples-master/examples/ss_twr_init/main.c" useBinaryEdit="0" left="0" path="../../../deca_driver/port/port_platform.c" selected="0" top="111" codecName="Default"/>
   <SessionOpenFile windowGroup="DockEditLeft" x="1" y="84" useTextEdit="1" openedFrom="/home/leonas/User/Lab/SystemV3/dwm1001-examples-master/examples/ss_twr_init/main.c" useBinaryEdit="0" left="0" path="../UART/UART.c" selected="0" top="55" codecName="Default"/>
