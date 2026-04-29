@@ -1,4 +1,3 @@
-
 // ============================================================================
 // Token Passing v2.3 — Tách DATA frame và TOKEN frame
 //
@@ -30,8 +29,8 @@
 // ============================================================================
 // CONFIG
 // ============================================================================
-#define MY_TAG_INDEX       1
-#define NUM_TAGS           2
+#define MY_TAG_INDEX       5
+#define NUM_TAGS           3
 #define MAX_TOKEN_WAIT_MS  200
 
 // ============================================================================
@@ -252,7 +251,7 @@ static void token_wait(void)
                 && flen >= TOKEN_MSG_LEN)
             {
                 uint16_t to_id = (uint16_t)rx_buffer[TOKEN_TO_IDX]
-                               | ((uint16_t)rx_buffer[TOKEN_TO_IDX+1] << 8);
+                | ((uint16_t)rx_buffer[TOKEN_TO_IDX+1] << 8);
                 if (to_id == MY_INITIATOR_DEVICE_ID) {
                     dwt_forcetrxoff();
                     return;
@@ -292,10 +291,10 @@ static int do_ranging(uint32_t anchor_id, uint8_t idx)
         dwt_starttx(DWT_START_TX_IMMEDIATE | DWT_RESPONSE_EXPECTED);
 
         while (!((status_reg = dwt_read32bitreg(SYS_STATUS_ID)) &
-                 (SYS_STATUS_RXFCG | SYS_STATUS_ALL_RX_TO | SYS_STATUS_ALL_RX_ERR))) {
+            (SYS_STATUS_RXFCG | SYS_STATUS_ALL_RX_TO | SYS_STATUS_ALL_RX_ERR))) {
             vTaskDelay(0);
-        }
-        frame_seq_nb++;
+            }
+            frame_seq_nb++;
 
         if (!(status_reg & SYS_STATUS_RXFCG)) {
             dwt_forcetrxoff();
@@ -303,7 +302,7 @@ static int do_ranging(uint32_t anchor_id, uint8_t idx)
                               SYS_STATUS_ALL_RX_TO | SYS_STATUS_ALL_RX_ERR);
             dwt_rxreset();
             uint32_t backoff_ms = (uint32_t)(retry_count < 4 ? retry_count : 4)
-                                  + pseudo_rand_jitter();
+            + pseudo_rand_jitter();
             if (backoff_ms > 0) vTaskDelay(pdMS_TO_TICKS(backoff_ms));
             retry_count++;
             continue;
@@ -336,13 +335,13 @@ static int do_ranging(uint32_t anchor_id, uint8_t idx)
         uint32_t ptx = dwt_readtxtimestamplo32();
         uint32_t rrx = dwt_readrxtimestamplo32();
         float cor = dwt_readcarrierintegrator() *
-                    (FREQ_OFFSET_MULTIPLIER * HERTZ_TO_PPM_MULTIPLIER_CHAN_5 / 1.0e6);
+        (FREQ_OFFSET_MULTIPLIER * HERTZ_TO_PPM_MULTIPLIER_CHAN_5 / 1.0e6);
         uint32_t prx, rtx;
         get_ts(&rx_buffer[RESP_MSG_POLL_RX_TS_IDX], &prx);
         get_ts(&rx_buffer[RESP_MSG_RESP_TX_TS_IDX], &rtx);
 
         double tof = (((int32_t)(rrx - ptx) - (int32_t)(rtx - prx) * (1.f - cor)) / 2.f)
-                     * DWT_TIME_UNITS;
+        * DWT_TIME_UNITS;
         anchor_data[idx].distance = tof * SPEED_OF_LIGHT * 1000.0;
         anchor_data[idx].valid    = 1;
         return 1;
