@@ -40,8 +40,8 @@
 #define RX_BUF_LEN              80
 #define FRAME_QUEUE_LEN         8
 
-#define TAG_TIMEOUT_MS          3000    // ms không nhận DATA → tag dead
-#define RING_COOLDOWN_MS        500     // cooldown giữa 2 lần gửi RING
+#define TAG_TIMEOUT_MS          1500    // ms không nhận DATA → tag dead
+#define RING_COOLDOWN_MS        10     // cooldown giữa 2 lần gửi RING
 
 // [RHYTHM-1] Sai thứ tự liên tiếp bao nhiêu lần thì resend RING
 #define DISORDER_THRESHOLD      2
@@ -279,8 +279,10 @@ static void rebuild_ring_if_needed(void)
         expected_next_idx = -1;
         disorder_count    = 0;
         if (new_size == 1)
+        {
             printf("[Bridge] 1 tag alive (0x%04X) — free ranging, no RING\r\n",
                    new_ring[0]);
+        }
         else
             printf("[Bridge] No tags alive\r\n");
     }
