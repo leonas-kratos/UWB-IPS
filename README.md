@@ -1,2 +1,2 @@
 # UWB-IPS
-An indoor positioning researcher focusing on Ultra-Wideband technology
+An indoor multi positioning researcher focusing on Ultra-Wideband technology
