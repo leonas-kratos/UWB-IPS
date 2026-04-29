@@ -29,7 +29,7 @@
 #define MY_TAG_ID           0x5676
 
 #define NUM_ANCHORS         3
-#define MAX_TOKEN_WAIT_MS   200
+#define MAX_TOKEN_WAIT_MS   100
 #define RX_BUF_LEN         64
 
 #define ANCHOR_1    0x1001
