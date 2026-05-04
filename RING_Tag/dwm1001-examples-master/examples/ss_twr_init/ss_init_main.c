@@ -76,6 +76,15 @@ static uint8_t  num_anchors = 0;
 #define ARMV_ID_IDX     10
 #define ARMV_MSG_LEN    14
 
+#define MAX_RANGING_RETRY    5
+#define RANGING_RETRY_DELAY_MS 5
+
+// Header cho message báo anchor chết
+static const uint8_t anch_dead_hdr_ref[] = { 0x41,0x88,0,0xCA,0xDE,'A','D','E','D',0xE8 };
+
+#define ADEAD_ID_IDX    10
+#define ADEAD_MSG_LEN   14
+
 static const uint8_t token_hdr_ref[]      = { 0x41,0x88,0,0xCA,0xDE,'T','O','K','N',0xE2 };
 static const uint8_t data_hdr_ref[]       = { 0x41,0x88,0,0xCA,0xDE,'D','A','T','A',0xE3 };
 static const uint8_t ring_hdr_ref[]       = { 0x41,0x88,0,0xCA,0xDE,'R','I','N','G',0xE4 };
@@ -217,14 +226,39 @@ static void handle_anch_remove(const uint8_t *buf, uint32_t flen)
     printf("[0x%04X] Anchor 0x%04X removed num=%d\r\n", MY_TAG_ID, remove_id, num_anchors);
 }
 
+static void anchor_dead_send(uint16_t anchor_id)
+{
+    uint8_t tx_buf[ADEAD_MSG_LEN];
+    memcpy(tx_buf, anch_dead_hdr_ref, ALL_MSG_COMMON_LEN);
+    tx_buf[ALL_MSG_SN_IDX]    = frame_seq_nb++;
+    tx_buf[ADEAD_ID_IDX]      = (uint8_t)(anchor_id & 0xFF);
+    tx_buf[ADEAD_ID_IDX+1]    = (uint8_t)((anchor_id >> 8) & 0xFF);
+    tx_buf[ADEAD_ID_IDX+2]    = 0x00;
+    tx_buf[ADEAD_ID_IDX+3]    = 0x00;
+
+    dwt_forcetrxoff();
+    dwt_write32bitreg(SYS_STATUS_ID, 0xFFFFFFFF);
+    dwt_writetxdata(ADEAD_MSG_LEN, tx_buf, 0);
+    dwt_writetxfctrl(ADEAD_MSG_LEN, 0, 0);
+    dwt_starttx(DWT_START_TX_IMMEDIATE);
+    while (!(dwt_read32bitreg(SYS_STATUS_ID) & SYS_STATUS_TXFRS)) {}
+    dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_TXFRS);
+    printf("[0x%04X] ANCHOR_DEAD broadcast 0x%04X\r\n", MY_TAG_ID, anchor_id);
+}
+
 static int do_ranging(uint32_t anchor_id, uint8_t idx)
 {
     int retry_count = 0;
-    anchor_data[idx].valid = 0; anchor_data[idx].distance = 0.0;
+    anchor_data[idx].valid = 0;
+    anchor_data[idx].distance = 0.0;
 
-    while (1) {
-        if (g_ring_pending || g_alist_pending) { dwt_forcetrxoff(); return RANGING_ABORTED; }
+    while (retry_count < MAX_RANGING_RETRY) {
+        if (g_ring_pending || g_alist_pending) {
+            dwt_forcetrxoff();
+            return RANGING_ABORTED;
+        }
 
+        /* --- Gửi POLL --- */
         tx_poll_msg[ALL_MSG_SN_IDX] = frame_seq_nb;
         set_device_id(&tx_poll_msg[POLL_MSG_DEVICE_ID_IDX], anchor_id);
         dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_TXFRS);
@@ -232,51 +266,70 @@ static int do_ranging(uint32_t anchor_id, uint8_t idx)
         dwt_writetxfctrl(sizeof(tx_poll_msg), 0, 1);
         dwt_starttx(DWT_START_TX_IMMEDIATE | DWT_RESPONSE_EXPECTED);
 
+        /* --- Chờ RX --- */
         while (!((status_reg = dwt_read32bitreg(SYS_STATUS_ID)) &
                  (SYS_STATUS_RXFCG | SYS_STATUS_ALL_RX_TO | SYS_STATUS_ALL_RX_ERR))) {
             if (g_ring_pending || g_alist_pending) {
-                dwt_forcetrxoff(); frame_seq_nb++; return RANGING_ABORTED;
+                dwt_forcetrxoff();
+                frame_seq_nb++;
+                return RANGING_ABORTED;
             }
             vTaskDelay(0);
         }
         frame_seq_nb++;
 
+        /* --- RX lỗi / timeout --- */
         if (!(status_reg & SYS_STATUS_RXFCG)) {
             dwt_forcetrxoff();
-            dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_ALL_RX_TO | SYS_STATUS_ALL_RX_ERR);
+            dwt_write32bitreg(SYS_STATUS_ID,
+                              SYS_STATUS_ALL_RX_TO | SYS_STATUS_ALL_RX_ERR);
             dwt_rxreset();
             if (g_ring_pending || g_alist_pending) return RANGING_ABORTED;
-            uint32_t bk = (uint32_t)(retry_count < 4 ? retry_count : 4) + pseudo_rand_jitter();
-            if (bk > 0) vTaskDelay(pdMS_TO_TICKS(bk));
-            retry_count++; continue;
+            vTaskDelay(pdMS_TO_TICKS(RANGING_RETRY_DELAY_MS));
+            retry_count++;
+            continue;
         }
 
-        uint32_t flen;
+        /* --- Đọc frame --- */
+        uint32_t flen = dwt_read32bitreg(RX_FINFO_ID) & RX_FINFO_RXFLEN_MASK;
         dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_RXFCG);
-        flen = dwt_read32bitreg(RX_FINFO_ID) & RX_FINFO_RXFLEN_MASK;
         if (flen <= RX_BUF_LEN) dwt_readrxdata(rx_buffer, flen, 0);
         rx_buffer[ALL_MSG_SN_IDX] = 0;
 
+        /* --- Kiểm tra frame đặc biệt (ưu tiên cao) --- */
         if (memcmp(rx_buffer, ring_hdr_ref, ALL_MSG_COMMON_LEN) == 0) {
-            handle_ring_frame(rx_buffer, flen); dwt_forcetrxoff(); return RANGING_ABORTED;
+            handle_ring_frame(rx_buffer, flen);
+            dwt_forcetrxoff();
+            return RANGING_ABORTED;
         }
         if (memcmp(rx_buffer, anch_list_hdr_ref, ALL_MSG_COMMON_LEN) == 0) {
-            handle_alist_frame(rx_buffer, flen); dwt_forcetrxoff(); return RANGING_ABORTED;
+            handle_alist_frame(rx_buffer, flen);
+            dwt_forcetrxoff();
+            return RANGING_ABORTED;
         }
         if (memcmp(rx_buffer, anch_remove_hdr_ref, ALL_MSG_COMMON_LEN) == 0) {
-            handle_anch_remove(rx_buffer, flen); dwt_forcetrxoff(); return RANGING_ABORTED;
+            handle_anch_remove(rx_buffer, flen);
+            dwt_forcetrxoff();
+            return RANGING_ABORTED;
         }
+
+        /* --- Kiểm tra RESP đúng header --- */
         if (memcmp(rx_buffer, rx_resp_msg, ALL_MSG_COMMON_LEN) != 0) {
             dwt_forcetrxoff();
             if (g_ring_pending || g_alist_pending) return RANGING_ABORTED;
-            retry_count++; continue;
+            retry_count++;
+            continue;
         }
+
+        /* --- Kiểm tra RESP đúng anchor_id --- */
         if (get_device_id(&rx_buffer[RESP_MSG_DEVICE_ID_IDX]) != anchor_id) {
             dwt_forcetrxoff();
             if (g_ring_pending || g_alist_pending) return RANGING_ABORTED;
-            retry_count++; continue;
+            retry_count++;
+            continue;
         }
 
+        /* --- Tính khoảng cách --- */
         uint32_t ptx = dwt_readtxtimestamplo32();
         uint32_t rrx = dwt_readrxtimestamplo32();
         float cor = dwt_readcarrierintegrator() *
@@ -284,11 +337,18 @@ static int do_ranging(uint32_t anchor_id, uint8_t idx)
         uint32_t prx, rtx;
         get_ts(&rx_buffer[RESP_MSG_POLL_RX_TS_IDX], &prx);
         get_ts(&rx_buffer[RESP_MSG_RESP_TX_TS_IDX], &rtx);
-        double tof = (((int32_t)(rrx-ptx) - (int32_t)(rtx-prx)*(1.f-cor)) / 2.f) * DWT_TIME_UNITS;
+        double tof = (((int32_t)(rrx - ptx) - (int32_t)(rtx - prx) * (1.f - cor)) / 2.f)
+                     * DWT_TIME_UNITS;
         anchor_data[idx].distance = tof * SPEED_OF_LIGHT * 1000.0;
-        anchor_data[idx].valid = 1;
+        anchor_data[idx].valid    = 1;
         return RANGING_OK;
     }
+
+    /* --- Hết retry: báo anchor chết --- */
+    printf("[0x%04X] Anchor 0x%04X no response after %d retries\r\n",
+           MY_TAG_ID, (unsigned)anchor_id, MAX_RANGING_RETRY);
+    anchor_dead_send((uint16_t)anchor_id);
+    return RANGING_FAIL;
 }
 
 static void data_send(void)

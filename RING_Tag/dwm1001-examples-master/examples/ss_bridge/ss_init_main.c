@@ -12,12 +12,12 @@
 #define RX_BUF_LEN              80
 #define FRAME_QUEUE_LEN         8
 
-#define TAG_TIMEOUT_MS          3000
+#define TAG_TIMEOUT_MS          1000
 #define RING_COOLDOWN_MS        10
 #define RING_RESYNC_MS          50
 #define ANCH_RESYNC_MS          50
 #define DISORDER_THRESHOLD      50
-#define ANCHOR_DEAD_CYCLES      3
+#define ANCHOR_DEAD_CYCLES      1
 
 static const uint8_t data_hdr_ref[]      = { 0x41,0x88,0,0xCA,0xDE,'D','A','T','A',0xE3 };
 static const uint8_t ring_hdr_ref[]      = { 0x41,0x88,0,0xCA,0xDE,'R','I','N','G',0xE4 };
@@ -102,6 +102,12 @@ static uint32_t last_alist_tx_tick= 0;
 static uint32_t total_rx          = 0;
 static uint32_t ring_tx_count     = 0;
 static uint32_t alist_tx_count    = 0;
+
+static const uint8_t anch_dead_hdr_ref[] = { 0x41,0x88,0,0xCA,0xDE,'A','D','E','D',0xE8 };
+#define ADEAD_ID_IDX    10
+#define ADEAD_MSG_LEN   14
+
+static uint8_t anchor_dead_reported[MAX_ANCHORS] = {0};  // đếm số tag báo dead
 
 static uint16_t decode_u16_le(const uint8_t *p)
 {
@@ -264,27 +270,36 @@ static void process_anch_hello(const uint8_t *buf, uint32_t flen)
     if (flen < AHELLO_MSG_LEN) return;
     uint16_t anchor_id = decode_u16_le(&buf[AHELLO_ID_IDX]);
 
-    if (anchor_index_of(anchor_id) >= 0) return;
-    if (anchor_count >= MAX_ANCHORS) return;
+    int idx = anchor_index_of(anchor_id);
 
-    anchor_entry_t *e = &anchor_table[anchor_count++];
-    e->anchor_id = anchor_id;
-    e->active    = 1;
-    memset(e->dead_cycle_count, 0, sizeof(e->dead_cycle_count));
-
-    printf("[Bridge] New anchor: 0x%04X\r\n", anchor_id);
+    if (idx >= 0) {
+        if (anchor_table[idx].active) return;
+        anchor_table[idx].active = 1;
+        memset(anchor_table[idx].dead_cycle_count, 0,
+               sizeof(anchor_table[idx].dead_cycle_count));
+        anchor_dead_reported[idx] = 0;
+        printf("[Bridge] Anchor 0x%04X re-joined\r\n", anchor_id);
+    } else {
+        if (anchor_count >= MAX_ANCHORS) return;
+        idx = anchor_count++;
+        anchor_table[idx].anchor_id = anchor_id;
+        anchor_table[idx].active    = 1;
+        memset(anchor_table[idx].dead_cycle_count, 0,
+               sizeof(anchor_table[idx].dead_cycle_count));
+        anchor_dead_reported[idx] = 0;
+        printf("[Bridge] New anchor: 0x%04X\r\n", anchor_id);
+    }
 
     rebuild_anchor_list();
     anch_list_send();
-
     anch_resync_active    = 1;
     last_anch_resync_tick = xTaskGetTickCount();
 }
 
 static void check_anchor_health(const uint8_t *buf, uint32_t flen, uint16_t tag_id, int tag_idx)
 {
-    uint8_t  na   = buf[DATA_NUMANCHORS_IDX];
-    uint32_t now  = xTaskGetTickCount();
+    uint8_t  na  = buf[DATA_NUMANCHORS_IDX];
+    uint32_t now = xTaskGetTickCount();
 
     for (int i = 0; i < na; i++) {
         const uint8_t *p = &buf[DATA_PAYLOAD_IDX + i * DATA_ANCHOR_STRIDE];
@@ -293,11 +308,10 @@ static void check_anchor_health(const uint8_t *buf, uint32_t flen, uint16_t tag_
         int      aidx      = anchor_index_of(anchor_id);
         if (aidx < 0 || !anchor_table[aidx].active) continue;
 
-        if (d_raw == (int32_t)0xFFFFFFFF) {
+        if (d_raw == (int32_t)0xFFFFFFFF)
             anchor_table[aidx].dead_cycle_count[tag_idx]++;
-        } else {
+        else
             anchor_table[aidx].dead_cycle_count[tag_idx] = 0;
-        }
 
         uint8_t all_dead = 1;
         for (int t = 0; t < alive_count; t++) {
@@ -309,11 +323,39 @@ static void check_anchor_health(const uint8_t *buf, uint32_t flen, uint16_t tag_
             printf("[Bridge] Anchor 0x%04X dead — removing\r\n", anchor_id);
             anch_remove_send(anchor_id);
             anchor_table[aidx].active = 0;
+            anchor_dead_reported[aidx] = 0;
+            memset(anchor_table[aidx].dead_cycle_count, 0,
+                   sizeof(anchor_table[aidx].dead_cycle_count));
             rebuild_anchor_list();
             anch_list_send();
             anch_resync_active    = 1;
             last_anch_resync_tick = now;
         }
+    }
+}
+
+static void process_anch_dead(const uint8_t *buf, uint32_t flen)
+{
+    if (flen < ADEAD_MSG_LEN) return;
+    uint16_t anchor_id = decode_u16_le(&buf[ADEAD_ID_IDX]);
+    int aidx = anchor_index_of(anchor_id);
+    if (aidx < 0 || !anchor_table[aidx].active) return;
+
+    anchor_dead_reported[aidx]++;
+    printf("[Bridge] ANCHOR_DEAD report for 0x%04X count=%d\r\n",
+           anchor_id, anchor_dead_reported[aidx]);
+
+    if (anchor_dead_reported[aidx] >= 1) {
+        printf("[Bridge] Removing anchor 0x%04X by tag report\r\n", anchor_id);
+        anch_remove_send(anchor_id);
+        anchor_table[aidx].active = 0;
+        anchor_dead_reported[aidx] = 0;
+        memset(anchor_table[aidx].dead_cycle_count, 0,
+               sizeof(anchor_table[aidx].dead_cycle_count));
+        rebuild_anchor_list();
+        anch_list_send();
+        anch_resync_active    = 1;
+        last_anch_resync_tick = xTaskGetTickCount();
     }
 }
 
@@ -327,6 +369,20 @@ static void ring_send_wrapper(void)
 static void rebuild_ring_if_needed(void)
 {
     uint32_t now = xTaskGetTickCount();
+    for (int i = 0; i < alive_count; i++) {
+    if ((now - alive_table[i].last_seen_tick) >= pdMS_TO_TICKS(TAG_TIMEOUT_MS)) {
+
+            printf("[Bridge] Tag 0x%04X FULLY REMOVED\r\n", alive_table[i].tag_id);
+
+            // shift left
+            for (int j = i; j < alive_count - 1; j++) {
+                alive_table[j] = alive_table[j + 1];
+            }
+
+            alive_count--;
+            i--; // rất quan trọng
+        }
+    }
     uint16_t new_ring[RING_MAX_TAGS];
     uint8_t  new_size = 0;
 
@@ -492,6 +548,8 @@ static void bridge_rx_loop(void)
                 process_data_frame(rslot->buf, rslot->len);
             else if (memcmp(rslot->buf, anch_hello_hdr_ref, ALL_MSG_COMMON_LEN) == 0)
                 process_anch_hello(rslot->buf, rslot->len);
+            else if (memcmp(rslot->buf, anch_dead_hdr_ref, ALL_MSG_COMMON_LEN) == 0)
+                process_anch_dead(rslot->buf, rslot->len);
             rslot->buf[ALL_MSG_SN_IDX] = saved;
             rslot->valid = 0;
             q_read = (q_read + 1) % FRAME_QUEUE_LEN;
