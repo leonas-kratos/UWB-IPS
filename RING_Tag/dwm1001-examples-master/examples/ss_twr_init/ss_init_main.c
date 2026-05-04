@@ -8,7 +8,7 @@
 #include "deca_regs.h"
 #include "port_platform.h"
 
-#define MY_TAG_ID           0x5677
+#define MY_TAG_ID           0x567E
 
 #define MAX_ANCHORS         8
 #define MAX_TOKEN_WAIT_MS   100
