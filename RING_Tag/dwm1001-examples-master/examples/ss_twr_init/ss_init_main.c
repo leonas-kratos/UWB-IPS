@@ -18,7 +18,7 @@
 #define RING_HDR_LEN        11
 
 /* FIX: timeout wait_for_alist < TAG_TIMEOUT_MS(3000) để tag còn kịp gửi DATA */
-#define WAIT_ALIST_TIMEOUT_MS   1500
+#define WAIT_ALIST_TIMEOUT_MS   1000
 
 static uint16_t ring_order[RING_MAX_TAGS];
 static uint8_t  ring_size   = 0;

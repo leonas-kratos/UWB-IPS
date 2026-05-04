@@ -17,7 +17,7 @@
 #define RING_RESYNC_MS          50
 #define ANCH_RESYNC_MS          50
 #define DISORDER_THRESHOLD      50
-#define ANCHOR_DEAD_CYCLES      1
+#define ANCHOR_DEAD_CYCLES      2
 
 static const uint8_t data_hdr_ref[]      = { 0x41,0x88,0,0xCA,0xDE,'D','A','T','A',0xE3 };
 static const uint8_t ring_hdr_ref[]      = { 0x41,0x88,0,0xCA,0xDE,'R','I','N','G',0xE4 };
@@ -482,9 +482,10 @@ static void process_data_frame(const uint8_t *buf, uint32_t flen)
     printf("0x%04X rs=%d na=%d", tag_id, tag_rs, na);
     for (int i = 0; i < na; i++) {
         const uint8_t *p = &buf[DATA_PAYLOAD_IDX + i * DATA_ANCHOR_STRIDE];
+        uint16_t anchor_id = decode_u16_le(p);
         int32_t d_raw = decode_i32_le(p + 2);
-        if (d_raw == (int32_t)0xFFFFFFFF) printf(",-1");
-        else printf(",%.0f", d_raw / 10.0);
+        if (d_raw == (int32_t)0xFFFFFFFF) printf(", 0x%04X:-1", anchor_id);
+        else printf(", 0x%04X:%.0f", anchor_id, d_raw / 10.0);
     }
     printf("\r\n");
 
