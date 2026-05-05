@@ -8,13 +8,13 @@
 #include "deca_regs.h"
 #include "port_platform.h"
 
-#define MY_TAG_ID           0x567E
+#define MY_TAG_ID           0x0001
 
-#define MAX_ANCHORS         8
+#define MAX_ANCHORS         10
 #define MAX_TOKEN_WAIT_MS   100
 #define RX_BUF_LEN         64
 
-#define RING_MAX_TAGS       8
+#define RING_MAX_TAGS       10
 #define RING_HDR_LEN        11
 
 /* FIX: timeout wait_for_alist < TAG_TIMEOUT_MS(3000) để tag còn kịp gửi DATA */

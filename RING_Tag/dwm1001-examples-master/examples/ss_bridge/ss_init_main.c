@@ -7,8 +7,8 @@
 #include "deca_regs.h"
 #include "port_platform.h"
 
-#define MAX_TAGS                8
-#define MAX_ANCHORS             8
+#define MAX_TAGS                10
+#define MAX_ANCHORS             10
 #define RX_BUF_LEN              80
 #define FRAME_QUEUE_LEN         8
 
@@ -479,14 +479,19 @@ static void process_data_frame(const uint8_t *buf, uint32_t flen)
         alive_table[found].tag_num_anchors = na;
     }
 
-    printf("0x%04X rs=%d na=%d", tag_id, tag_rs, na);
+    printf("tag=0x%04X  rs=%2d  na=%2d", tag_id, tag_rs, na);
+
     for (int i = 0; i < na; i++) {
         const uint8_t *p = &buf[DATA_PAYLOAD_IDX + i * DATA_ANCHOR_STRIDE];
         uint16_t anchor_id = decode_u16_le(p);
         int32_t d_raw = decode_i32_le(p + 2);
-        if (d_raw == (int32_t)0xFFFFFFFF) printf(", 0x%04X:-1", anchor_id);
-        else printf(", 0x%04X:%.0f", anchor_id, d_raw / 10.0);
+
+        if (d_raw == (int32_t)0xFFFFFFFF)
+            printf(" | %04X : %4s", anchor_id, "-1");
+        else
+            printf(" | %04X : %4.0f", anchor_id, d_raw / 10.0);
     }
+
     printf("\r\n");
 
     if (found >= 0) check_anchor_health(buf, flen, tag_id, found);
