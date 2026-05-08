@@ -8,7 +8,7 @@
 #include "port_platform.h"
 #include "SEGGER_RTT.h"
 
-#define MY_DEVICE_ID        0x1009
+#define MY_DEVICE_ID        0x1001
 #define HELLO_RETRY_MS      5
 #define RNG_DELAY_MS        1
 
