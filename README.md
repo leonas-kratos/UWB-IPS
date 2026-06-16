@@ -1,6 +1,6 @@
 # UWB-IPS — Ultra-Wideband Indoor Positioning System
 
-> Embedded firmware for multi-tag indoor positioning research based on Ultra-Wideband (UWB) technology, supporting two channel access protocols: **RING** and **TDMA**.
+> Embedded firmware for multi-tag indoor positioning research based on Ultra-Wideband (UWB) technology, using a **RING** (round-robin) channel access protocol.
 
 ---
 
@@ -10,9 +10,7 @@
 - [Features](#features)
 - [System Architecture](#system-architecture)
 - [Repository Structure](#repository-structure)
-- [Protocols](#protocols)
-  - [RING Tag](#ring-tag)
-  - [TDMA Tag](#tdma-tag)
+- [Protocol](#protocol)
 - [Hardware Requirements](#hardware-requirements)
 - [Software Requirements](#software-requirements)
 - [Installation & Build](#installation--build)
@@ -27,12 +25,7 @@
 
 **UWB-IPS** is an embedded firmware project for researching **Ultra-Wideband (UWB)** based Indoor Positioning Systems (IPS). The system implements **Two-Way Ranging (TWR)** to measure distances between a mobile tag and a set of fixed anchors, then applies **multilateration** to compute 2D/3D coordinates.
 
-The project provides two MAC (Medium Access Control) protocol variants for the tag:
-
-| Protocol | Description |
-|----------|-------------|
-| **RING_Tag** | Round-robin channel access — each tag takes turns performing ranging |
-| **TDMA_Tag** | Time-slotted channel access — each tag is assigned dedicated time slots |
+The project implements the **RING** MAC (Medium Access Control) protocol for the tag, providing a simple and collision-free round-robin channel access scheme.
 
 ---
 
@@ -40,7 +33,7 @@ The project provides two MAC (Medium Access Control) protocol variants for the t
 
 - Centimeter-level distance measurement using UWB Two-Way Ranging (TWR / DS-TWR)
 - Multi-tag simultaneous operation without signal collisions
-- Two MAC protocols: RING (simple) and TDMA (high-throughput)
+- RING MAC protocol for collision-free multi-tag channel access
 - Position estimation via multilateration / trilateration
 - Lightweight pure-C firmware, easy to port to different embedded platforms
 - Suitable for both academic research and real-world prototyping
@@ -71,7 +64,7 @@ The project provides two MAC (Medium Access Control) protocol variants for the t
 **Components:**
 - **Anchor**: Fixed UWB device at a known position. Responds to ranging requests from tags.
 - **Tag**: Mobile UWB device. Initiates ranging to anchors and computes its own position.
-- **MAC Protocol**: Coordinates channel access order to prevent collisions (RING / TDMA).
+- **MAC Protocol**: Coordinates channel access order to prevent collisions (RING).
 
 ---
 
@@ -83,17 +76,13 @@ UWB-IPS/
 │   ├── Core/          # Main C source code
 │   ├── Drivers/       # UWB and peripheral drivers
 │   └── ...
-├── TDMA_Tag/          # Tag firmware using TDMA (time-slotted) protocol
-│   ├── Core/          # Main C source code
-│   ├── Drivers/       # UWB and peripheral drivers
-│   └── ...
 ├── LICENSE
 └── README.md
 ```
 
 ---
 
-## Protocols
+## Protocol
 
 ### RING Tag
 
@@ -109,23 +98,6 @@ Superframe:
 
 - A tag receives the token → performs ranging with all anchors → passes the token to the next tag.
 - Simple to implement; best suited for small tag counts.
-
-### TDMA Tag
-
-The **TDMA** protocol divides time into fixed slots within a superframe. Each tag is pre-assigned one or more slots:
-
-```
-Superframe (e.g. 1 s, N slots):
-┌──────┬──────┬──────┬──────┬──────┬──────┐
-│ Slot │ Slot │ Slot │ Slot │ Slot │ Slot │
-│  0   │  1   │  2   │  3   │ ...  │  N   │
-│Tag 0 │Tag 1 │Tag 0 │Tag 2 │      │Tag N │
-└──────┴──────┴──────┴──────┴──────┴──────┘
-```
-
-- A master anchor (or a synchronized network) coordinates slots via CCP (Clock Calibration Packet).
-- Supports more simultaneous tags and higher position-update rates.
-- Well-suited for large-scale deployments.
 
 ---
 
@@ -157,8 +129,8 @@ Superframe (e.g. 1 s, N slots):
 git clone https://github.com/leonas-kratos/UWB-IPS.git
 cd UWB-IPS
 
-# 2. Enter the desired firmware directory
-cd RING_Tag    # or: cd TDMA_Tag
+# 2. Enter the firmware directory
+cd RING_Tag
 
 # 3. Build
 make all
@@ -167,17 +139,17 @@ make all
 make flash     # or use your IDE / OpenOCD
 ```
 
-> **Note**: System parameters (anchor coordinates, TDMA slot count, UWB radio settings) can be configured in the header files under `Core/Inc/` within each module directory.
+> **Note**: System parameters (anchor coordinates, UWB radio settings, tag order) can be configured in the header files under `Core/Inc/`.
 
 ---
 
 ## Usage
 
-1. **Deploy anchors** — Place anchors at fixed, known positions. Flash the anchor firmware and ensure clock synchronization between anchors (required for TDMA).
+1. **Deploy anchors** — Place anchors at fixed, known positions and flash the anchor firmware.
 
-2. **Configure the system** — Set UWB addresses (PAN ID, node ID) for each device. For TDMA, configure the superframe parameters (slot count, slot duration). For RING, define the tag order.
+2. **Configure the system** — Set UWB addresses (PAN ID, node ID) for each device and define the tag order in the RING sequence.
 
-3. **Flash the tag firmware** — Flash the firmware from `RING_Tag/` or `TDMA_Tag/` onto the mobile tag device.
+3. **Flash the tag firmware** — Flash the firmware from `RING_Tag/` onto the mobile tag device.
 
 4. **Run the system** — Power on all devices. The tag automatically starts ranging with the anchors and outputs distance or position data via UART or another interface.
 
