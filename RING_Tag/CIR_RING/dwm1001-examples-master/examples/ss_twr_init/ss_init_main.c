@@ -373,7 +373,7 @@ static int do_ranging(uint32_t anchor_id, uint8_t idx)
             dwt_readdiagnostics(&cir_diag);
             cir_anchor_id = (uint16_t)anchor_id;
             uint16_t fp_int = cir_diag.firstPath >> 6;
-            uint16_t start  = (fp_int > 23) ? (fp_int - 23) : 0;
+            uint16_t start  = (fp_int > 23) ? (fp_int - 2) : 0;
             dwt_readaccdata(cir_raw, CIR_NUM_SAMPLES * 4 + 1, start * 4);
             for (int s = 0; s < CIR_NUM_SAMPLES; s++) {
                 int16_t re = (int16_t)(cir_raw[1 + s*4] | (cir_raw[1 + s*4 + 1] << 8));
