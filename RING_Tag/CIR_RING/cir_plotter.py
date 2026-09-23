@@ -78,9 +78,9 @@ class SerialReaderThread(QtCore.QThread):
         self.ser = None
 
         # Regex phát hiện dòng tiêu đề CIR và dòng MAG
-        # [CIR] tag=0x0005 anch=0x1003 fp=751.56 ns=47 N=756 sN=32 A1=6836 A2=7162 A3=5700 G=1976 PC=120
+        # [CIR] range=125.4 tag=0x0005 anch=0x1003 fp=751.56 ns=45 N=756 sN=32 A1=6836 A2=7162 A3=5700 G=1976 PC=120
         self.cir_hdr_re = re.compile(
-            r'\[CIR\]\s+tag=(0x[0-9a-fA-F]+)\s+anch=(0x[0-9a-fA-F]+)\s+fp=([0-9.]+)\s+ns=(\d+)'
+            r'\[CIR\]\s+(?:range=([0-9.-]+)\s+)?tag=(0x[0-9a-fA-F]+)\s+anch=(0x[0-9a-fA-F]+)\s+fp=([0-9.]+)\s+ns=(\d+)'
             r'(?:\s+N=(\d+))?(?:\s+sN=(\d+))?(?:\s+A1=(\d+))?(?:\s+A2=(\d+))?(?:\s+A3=(\d+))?'
             r'(?:\s+G=(\d+))?(?:\s+PC=(\d+))?'
         )
@@ -114,18 +114,20 @@ class SerialReaderThread(QtCore.QThread):
                 # Kiểm tra xem có phải dòng [CIR]
                 hdr_match = self.cir_hdr_re.search(line)
                 if hdr_match:
+                    range_raw = hdr_match.group(1)
                     pending_hdr = {
-                        "tag_id": hdr_match.group(1).upper(),
-                        "anchor_id": hdr_match.group(2).upper(),
-                        "first_path": float(hdr_match.group(3)),
-                        "num_samples": int(hdr_match.group(4)),
-                        "max_noise": int(hdr_match.group(5) or 0),
-                        "std_noise": int(hdr_match.group(6) or 0),
-                        "a1": int(hdr_match.group(7) or 0),
-                        "a2": int(hdr_match.group(8) or 0),
-                        "a3": int(hdr_match.group(9) or 0),
-                        "growth": int(hdr_match.group(10) or 0),
-                        "preamble_cnt": int(hdr_match.group(11) or 0),
+                        "range": float(range_raw) if range_raw is not None else -1.0,
+                        "tag_id": hdr_match.group(2).upper(),
+                        "anchor_id": hdr_match.group(3).upper(),
+                        "first_path": float(hdr_match.group(4)),
+                        "num_samples": int(hdr_match.group(5)),
+                        "max_noise": int(hdr_match.group(6) or 0),
+                        "std_noise": int(hdr_match.group(7) or 0),
+                        "a1": int(hdr_match.group(8) or 0),
+                        "a2": int(hdr_match.group(9) or 0),
+                        "a3": int(hdr_match.group(10) or 0),
+                        "growth": int(hdr_match.group(11) or 0),
+                        "preamble_cnt": int(hdr_match.group(12) or 0),
                         "recv_time": time.time(),
                     }
                     continue
@@ -171,6 +173,7 @@ class SerialReaderThread(QtCore.QThread):
             hex_str = mags.tobytes().hex().upper()
 
             packet = {
+                "range": round(125.4 + np.random.uniform(-5, 5), 1),
                 "tag_id": "0x0005",
                 "anchor_id": anch,
                 "first_path": fp,
@@ -541,8 +544,10 @@ class CIRMainWindow(QtWidgets.QMainWindow):
                             anch_hz = (len(atimes) - 1) / dur
 
                 # Cập nhật label chi tiết
+                range_val = pkt.get("range", -1.0)
+                range_str = f"{range_val:.1f} cm" if range_val >= 0 else "N/A"
                 self.anchor_info_labels[idx].setText(
-                    f"Anchor {idx+1} [{pkt['anchor_id']}] — Tốc độ: {anch_hz:.1f} Hz | "
+                    f"Anchor {idx+1} [{pkt['anchor_id']}] — Khoảng cách: {range_str} | Tốc độ: {anch_hz:.1f} Hz | "
                     f"Đỉnh Peak: {peak_val} (mẫu #{peak_idx}) | "
                     f"FirstPath: {fp_raw:.2f} | "
                     f"Nhiễu: N={pkt['max_noise']}, sN={pkt['std_noise']} | "
@@ -558,7 +563,9 @@ class CIRMainWindow(QtWidgets.QMainWindow):
             self.txt_raw_hex.setPlainText(hex_text)
 
             mags_str = ", ".join(str(v) for v in newest_pkt['magnitudes'])
-            dec_text = f"[{newest_pkt['anchor_id']}] ({len(newest_pkt['magnitudes'])} samples uint16 LE):\n[{mags_str}]"
+            range_val = newest_pkt.get("range", -1.0)
+            range_str = f"{range_val:.1f} cm" if range_val >= 0 else "N/A"
+            dec_text = f"[{newest_pkt['anchor_id']}] Khoảng cách: {range_str} ({len(newest_pkt['magnitudes'])} samples uint16 LE):\n[{mags_str}]"
             self.txt_decoded.setPlainText(dec_text)
 
     def closeEvent(self, event):

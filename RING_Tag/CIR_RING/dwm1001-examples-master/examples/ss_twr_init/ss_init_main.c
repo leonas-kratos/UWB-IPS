@@ -85,15 +85,17 @@ static const uint8_t anch_dead_hdr_ref[] = { 0x41,0x88,0,0xCA,0xDE,'A','D','E','
 #define ADEAD_ID_IDX    10
 #define ADEAD_MSG_LEN   14
 
-//  frame definitions — magnitude-only, full diagnostics
+//  frame definitions — magnitude-only, full diagnostics + range
 static const uint8_t cir_hdr_ref[] = { 0x41,0x88,0,0xCA,0xDE,'C','I','R','D',0xE9 };
 #define CIR_TAG_IDX         10
 #define CIR_ANCHOR_IDX      12
-#define CIR_DIAG_IDX        14  // 8 x uint16: maxNoise,fpAmp1,stdNoise,fpAmp2,fpAmp3,maxGrowCIR,preamCnt,firstPath
-#define CIR_DIAG_LEN        16
-#define CIR_NUM_SAMPLES_IDX 30  // (CIR_DIAG_IDX + CIR_DIAG_LEN)
-#define CIR_DATA_IDX        31  // uint16 magnitudes start here
-#define CIR_NUM_SAMPLES     47  // samples around first path
+#define CIR_RANGE_IDX       14  // int32_t raw distance (distance * 10.0)
+#define CIR_RANGE_LEN        4
+#define CIR_DIAG_IDX        18  // (CIR_RANGE_IDX + CIR_RANGE_LEN)
+#define CIR_DIAG_LEN        16  // 8 x uint16: maxNoise,fpAmp1,stdNoise,fpAmp2,fpAmp3,maxGrowCIR,preamCnt,firstPath
+#define CIR_NUM_SAMPLES_IDX 34  // (CIR_DIAG_IDX + CIR_DIAG_LEN)
+#define CIR_DATA_IDX        35  // uint16 magnitudes start here
+#define CIR_NUM_SAMPLES     45  // samples around first path (45*2 = 90 bytes -> total frame 127 bytes)
 #define CIR_MAG_SIZE        2   // uint16 per magnitude
 #define CIR_MSG_LEN         (CIR_DATA_IDX + CIR_NUM_SAMPLES * CIR_MAG_SIZE + 2)  // = 127
 
@@ -127,6 +129,7 @@ static uint8_t     cir_raw[CIR_NUM_SAMPLES * 4 + 1]; // raw complex from accumul
 static uint16_t    cir_mag[CIR_NUM_SAMPLES];          // computed magnitudes
 static dwt_rxdiag_t cir_diag;                         // full diagnostics
 static uint16_t    cir_anchor_id = 0;
+static int32_t     cir_distance_raw = (int32_t)0xFFFFFFFF;
 static uint8_t     cir_valid     = 0;
 
 #define SPEED_OF_LIGHT 299702547
@@ -372,6 +375,9 @@ static int do_ranging(uint32_t anchor_id, uint8_t idx)
         {
             dwt_readdiagnostics(&cir_diag);
             cir_anchor_id = (uint16_t)anchor_id;
+            cir_distance_raw = anchor_data[idx].valid
+                               ? (int32_t)(anchor_data[idx].distance * 10.0)
+                               : (int32_t)0xFFFFFFFF;
             uint16_t fp_int = cir_diag.firstPath >> 6;
             uint16_t start  = (fp_int > 23) ? (fp_int - 2) : 0;
             dwt_readaccdata(cir_raw, CIR_NUM_SAMPLES * 4 + 1, start * 4);
@@ -405,6 +411,12 @@ static void cir_send(void)
     tx_buf[CIR_TAG_IDX+1]        = (uint8_t)((MY_TAG_ID >> 8) & 0xFF);
     tx_buf[CIR_ANCHOR_IDX]       = (uint8_t)(cir_anchor_id & 0xFF);
     tx_buf[CIR_ANCHOR_IDX+1]     = (uint8_t)((cir_anchor_id >> 8) & 0xFF);
+
+    /* Range: int32_t LE */
+    tx_buf[CIR_RANGE_IDX]        = (uint8_t)(cir_distance_raw & 0xFF);
+    tx_buf[CIR_RANGE_IDX+1]      = (uint8_t)((cir_distance_raw >> 8) & 0xFF);
+    tx_buf[CIR_RANGE_IDX+2]      = (uint8_t)((cir_distance_raw >> 16) & 0xFF);
+    tx_buf[CIR_RANGE_IDX+3]      = (uint8_t)((cir_distance_raw >> 24) & 0xFF);
 
     /* Full diagnostics: maxNoise,fpAmp1,stdNoise,fpAmp2,fpAmp3,maxGrowCIR,preamCnt,firstPath */
     uint16_t diag_arr[8] = {

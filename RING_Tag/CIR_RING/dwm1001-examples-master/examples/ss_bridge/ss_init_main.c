@@ -110,10 +110,12 @@ static const uint8_t anch_dead_hdr_ref[] = { 0x41,0x88,0,0xCA,0xDE,'A','D','E','
 static const uint8_t cir_hdr_ref[] = { 0x41,0x88,0,0xCA,0xDE,'C','I','R','D',0xE9 };
 #define CIR_TAG_IDX         10
 #define CIR_ANCHOR_IDX      12
-#define CIR_DIAG_IDX        14
+#define CIR_RANGE_IDX       14
+#define CIR_RANGE_LEN        4
+#define CIR_DIAG_IDX        18
 #define CIR_DIAG_LEN        16
-#define CIR_NUM_SAMPLES_IDX 30
-#define CIR_DATA_IDX        31
+#define CIR_NUM_SAMPLES_IDX 34
+#define CIR_DATA_IDX        35
 #define CIR_MAG_SIZE        2
 
 static uint8_t anchor_dead_reported[MAX_ANCHORS] = {0};  // đếm số tag báo dead
@@ -468,6 +470,7 @@ static void process_cir_frame(const uint8_t *buf, uint32_t flen)
     if (flen < CIR_DATA_IDX + 2) return;
     uint16_t tag_id    = decode_u16_le(&buf[CIR_TAG_IDX]);
     uint16_t anchor_id = decode_u16_le(&buf[CIR_ANCHOR_IDX]);
+    int32_t  d_raw     = decode_i32_le(&buf[CIR_RANGE_IDX]);
     uint8_t  ns        = buf[CIR_NUM_SAMPLES_IDX];
 
     if (flen < (uint32_t)(CIR_DATA_IDX + ns * CIR_MAG_SIZE + 2)) return;
@@ -482,10 +485,17 @@ static void process_cir_frame(const uint8_t *buf, uint32_t flen)
     uint16_t preamCnt  = decode_u16_le(&buf[CIR_DIAG_IDX + 12]);
     uint16_t firstPath = decode_u16_le(&buf[CIR_DIAG_IDX + 14]);
 
-    printf("[CIR] tag=0x%04X anch=0x%04X fp=%u.%02u ns=%d "
-           "N=%u sN=%u A1=%u A2=%u A3=%u G=%u PC=%u\r\n",
-           tag_id, anchor_id, firstPath >> 6, (firstPath & 0x3F) * 100 / 64, ns,
-           maxNoise, stdNoise, fpAmp1, fpAmp2, fpAmp3, maxGrowCIR, preamCnt);
+    if (d_raw == (int32_t)0xFFFFFFFF) {
+        printf("[CIR] range=-1 tag=0x%04X anch=0x%04X fp=%u.%02u ns=%d "
+               "N=%u sN=%u A1=%u A2=%u A3=%u G=%u PC=%u\r\n",
+               tag_id, anchor_id, firstPath >> 6, (firstPath & 0x3F) * 100 / 64, ns,
+               maxNoise, stdNoise, fpAmp1, fpAmp2, fpAmp3, maxGrowCIR, preamCnt);
+    } else {
+        printf("[CIR] range=%.1f tag=0x%04X anch=0x%04X fp=%u.%02u ns=%d "
+               "N=%u sN=%u A1=%u A2=%u A3=%u G=%u PC=%u\r\n",
+               d_raw / 10.0, tag_id, anchor_id, firstPath >> 6, (firstPath & 0x3F) * 100 / 64, ns,
+               maxNoise, stdNoise, fpAmp1, fpAmp2, fpAmp3, maxGrowCIR, preamCnt);
+    }
     printf("  MAG:");
     for (int i = 0; i < ns * CIR_MAG_SIZE; i++)
         printf("%02X", buf[CIR_DATA_IDX + i]);
